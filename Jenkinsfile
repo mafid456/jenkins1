@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Clone Repo') {
             steps {
-                git 'https://github.com/your-username/python-docker-app.git'
+                git url:'https://github.com/mafid456/jenkins1.git', branch: 'main'
             }
         }
 
