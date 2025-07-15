@@ -1,19 +1,26 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'python:3.10'
+            args '-u root' // Run as root to access Docker socket if needed
+        }
+    }
 
     environment {
         IMAGE_NAME = "python-docker-app"
+        CONTAINER_NAME = "flask_app"
     }
 
     stages {
         stage('Clone Repo') {
             steps {
-                git url:'https://github.com/mafid456/jenkins1.git', branch: 'main'
+                git url: 'https://github.com/mafid456/jenkins1.git', branch: 'main'
             }
         }
 
         stage('Install Dependencies') {
             steps {
+                sh 'pip install --upgrade pip'
                 sh 'pip install -r requirements.txt'
             }
         }
@@ -30,17 +37,22 @@ pipeline {
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Deploy Docker Container') {
             steps {
-                sh 'docker run -d -p 5000:5000 --name flask_app $IMAGE_NAME'
+                sh '''
+                    docker rm -f $CONTAINER_NAME || true
+                    docker run -d --name $CONTAINER_NAME -p 5000:5000 $IMAGE_NAME
+                '''
             }
         }
     }
 
     post {
-        always {
-            echo 'Cleaning up Docker containers...'
-            sh 'docker rm -f flask_app || true'
+        success {
+            echo "✅ Deployment succeeded!"
+        }
+        failure {
+            echo "❌ Deployment failed."
         }
     }
 }
