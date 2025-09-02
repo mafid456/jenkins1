@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "my-docker-user/python-app"
+        IMAGE_NAME = "shaikmafidbasha/python-app"
         IMAGE_TAG = "latest"
     }
 
@@ -21,7 +21,7 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                withDockerRegistry([ credentialsId: 'shaikmafidbasha', url: 'https://hub.docker.com/repository/docker/shaikmafidbasha/python-app/general' ]) {
+                withDockerRegistry([ credentialsId: 'dockerhub-creds', url: '' ]) {
                     sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
                 }
             }
