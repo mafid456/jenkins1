@@ -21,7 +21,7 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                withDockerRegistry([ credentialsId: 'dockerhub-creds', url: '' ]) {
+                withDockerRegistry([ credentialsId: 'shaikmafidbasha', url: 'https://hub.docker.com/repository/docker/shaikmafidbasha/python-app/general' ]) {
                     sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
                 }
             }
