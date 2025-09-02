@@ -2,36 +2,30 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "simple-python-app"
-        REPO_URL = "https://github.com/mafid456/jenkins1.git"
+        IMAGE_NAME = "my-docker-user/python-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
-        stage('Clone Repository') {
+        stage('Checkout') {
             steps {
-                git url: "${REPO_URL}", branch: 'main'
+                git branch: 'main', url: 'https://github.com/username/repository.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Push to Docker Hub') {
             steps {
-                sh '''
-                    docker rm -f $IMAGE_NAME || true
-                    docker run -d -p 5000:5000 --name $IMAGE_NAME $IMAGE_NAME
-                '''
+                withDockerRegistry([ credentialsId: 'dockerhub-creds', url: '' ]) {
+                    sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
+                }
             }
-        }
-    }
-
-    post {
-        always {
-            echo 'Pipeline finished.'
         }
     }
 }
+
