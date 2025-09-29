@@ -2,14 +2,13 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_REPO = "shaikmafidbasha"
-        DOCKER_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKER_HUB_REPO = "shaikmafidbasha"   // <--- change to your Docker Hub repo
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git 'https://github.com/mafid456/jenkins1.git'
+                git branch: 'main', url: 'https://github.com/mafid456/jenkins1.git'
             }
         }
 
@@ -25,11 +24,20 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        dockerImage.push()
+                        dockerImage.push("${BUILD_NUMBER}")
                         dockerImage.push("latest")
                     }
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Docker image pushed successfully to Docker Hub"
+        }
+        failure {
+            echo "❌ Build failed — check logs"
         }
     }
 }
