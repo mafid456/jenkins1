@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_REPO = "shaikmafidbasha"   // <--- change to your Docker Hub repo
+        DOCKER_HUB_REPO = "shaikmafidbasha/jenkins1"   // repo must exist in your Docker Hub
     }
 
     stages {
@@ -34,10 +34,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Docker image pushed successfully to Docker Hub"
+            echo "✅ Docker image pushed successfully: ${DOCKER_HUB_REPO}:${BUILD_NUMBER}"
         }
         failure {
-            echo "❌ Build failed — check logs"
+            echo "❌ Failed to push Docker image — check credentials or repo name"
         }
     }
 }
