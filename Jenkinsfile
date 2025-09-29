@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_REPO = "shaikmafidbasha/jenkins1"   // repo must exist in your Docker Hub
+        DOCKER_HUB_REPO = "shaikmafidbasha/jenkins1"   // make sure this repo exists in Docker Hub
     }
 
     stages {
@@ -23,9 +23,9 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        dockerImage.push("${BUILD_NUMBER}")
-                        dockerImage.push("latest")
+                    docker.withRegistry('https://index.docker.io/v1/', '30c6d24f-197b-401e-8fbd-ec15666d717b') {
+                        dockerImage.push("${BUILD_NUMBER}")  // version tag
+                        dockerImage.push("latest")           // latest tag
                     }
                 }
             }
@@ -34,10 +34,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Docker image pushed successfully: ${DOCKER_HUB_REPO}:${BUILD_NUMBER}"
+            echo "✅ Successfully pushed ${DOCKER_HUB_REPO}:${BUILD_NUMBER} and :latest to Docker Hub"
         }
         failure {
-            echo "❌ Failed to push Docker image — check credentials or repo name"
+            echo "❌ Failed to push Docker image. Check repo/credentials."
         }
     }
 }
