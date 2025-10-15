@@ -2,42 +2,98 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_REPO = "shaikmafidbasha/jenkins1"   // make sure this repo exists in Docker Hub
+        CLUSTER_NAME = "ma-cluster"
+        AWS_REGION = "ap-south-1"
+        ECR_REPO = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/myapp"
+        DOCKERHUB_REPO = "shaikmafidbasha/myapp"
+        IMAGE_TAG = "latest"
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/mafid456/jenkins1.git'
+                git branch: 'main', url: 'https://github.com/yourusername/yourrepo.git'
+            }
+        }
+
+        stage('Create EKS Cluster') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
+                    sh '''
+                    echo "Creating Kubernetes cluster on AWS..."
+                    eksctl create cluster \
+                      --name $ma-cluster \
+                      --region ap-south-1 \
+                      --nodes 2 \
+                      --node-type t3.medium \
+                      --managed
+                    '''
+                }
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
+                    sh '''
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                    '''
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    dockerImage = docker.build("${DOCKER_HUB_REPO}:${BUILD_NUMBER}")
+                sh '''
+                docker build -t $ECR_REPO:$IMAGE_TAG .
+                '''
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                docker push $ECR_REPO:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Push Image to Docker Hub') {
             steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', '30c6d24f-197b-401e-8fbd-ec15666d717b') {
-                        dockerImage.push("${BUILD_NUMBER}")  // version tag
-                        dockerImage.push("latest")           // latest tag
-                    }
-                }
+                sh '''
+                docker tag $ECR_REPO:$IMAGE_TAG $DOCKERHUB_REPO:$IMAGE_TAG
+                docker push $DOCKERHUB_REPO:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Deploy to Cluster') {
+            steps {
+                sh '''
+                kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "✅ Successfully pushed ${DOCKER_HUB_REPO}:${BUILD_NUMBER} and :latest to Docker Hub"
+            echo "✅ Cluster created, image built & pushed, and app deployed successfully!"
         }
         failure {
-            echo "❌ Failed to push Docker image. Check repo/credentials."
+            echo "❌ Pipeline failed. Check logs."
         }
     }
 }
