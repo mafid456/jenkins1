@@ -38,12 +38,27 @@ pipeline {
                 sh 'docker push $ECR_REPO:latest'
             }
         }
-
+        
+        stage('Create EKS Cluster') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
+                    sh '''
+                    echo "Creating Kubernetes cluster on AWS..."
+                    eksctl create cluster \
+                      --name ma-eks-cluster \
+                      --region ap-south-1 \
+                      --nodes 1 \
+                      --node-type t3.medium \
+                      --managed
+                    '''
+                }
+            }
+        }
         stage('Configure kubectl for EKS') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
-                        aws eks update-kubeconfig --name ma-eks-cluster --region ap-south-1
+                        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl get nodes
                     '''
                 }
@@ -66,4 +81,3 @@ pipeline {
         success { echo '✅ Docker image pushed to ECR and deployed to EKS successfully!' }
     }
 }
-
