@@ -43,22 +43,28 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
-                    echo "Creating Kubernetes cluster on AWS..."
-                    eksctl create cluster \
-                      --name ma-eks-cluster \
-                      --region ap-south-1 \
-                      --nodes 1 \
-                      --node-type t3.medium \
-                      --managed
+                    # Check if the cluster already exists
+                    if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
+                        echo "Cluster $CLUSTER_NAME already exists. Skipping creation."
+                    else
+                        echo "Creating Kubernetes cluster $CLUSTER_NAME..."
+                        eksctl create cluster \
+                          --name ma-eks-cluster \
+                          --region ap-south-1 \
+                          --nodes 1 \
+                          --node-type t3.medium \
+                          --managed
+                    fi
                     '''
                 }
             }
         }
+
         stage('Configure kubectl for EKS') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
-                        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+                        aws eks update-kubeconfig --name ma-eks-cluster --region ap-south-1
                         kubectl get nodes
                     '''
                 }
