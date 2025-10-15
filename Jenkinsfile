@@ -64,7 +64,7 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
-                        aws eks update-kubeconfig --name ma-eks-cluster --region ap-south-1
+                        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl get nodes
                     '''
                 }
