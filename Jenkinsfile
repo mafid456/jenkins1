@@ -70,20 +70,10 @@ pipeline {
                 }
             }
         }
-
-        stage('Deploy to EKS') {
-            steps {
-                sh '''
-                    # Update your Kubernetes deployment with the new image
-                    kubectl set image deployment/my-app-deployment my-app-container=$ECR_REPO:latest -n $KUBE_NAMESPACE
-                    kubectl rollout status deployment/my-app-deployment -n $KUBE_NAMESPACE
-                '''
-            }
-        }
     }
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image pushed to ECR and deployed to EKS successfully!' }
+        success { echo '✅ Docker image pushed to ECR and EKS cluster configured successfully!' }
     }
 }
