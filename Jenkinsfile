@@ -4,7 +4,7 @@ pipeline {
     environment {
         CLUSTER_NAME = "ma-cluster"
         AWS_REGION = "ap-south-1"
-        ECR_REPO = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/myapp"
+        ECR_REPO = "503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app"
         DOCKERHUB_REPO = "shaikmafidbasha/myapp"
         IMAGE_TAG = "latest"
     }
@@ -37,7 +37,7 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
                     sh '''
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app
                     '''
                 }
             }
@@ -61,7 +61,7 @@ pipeline {
 
         stage('Login to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'shaikmafidbasha', passwordVariable: 'c9a39a2b-6afc-4762-b2a4-fd3cf481115b')]) {
                     sh '''
                     echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                     '''
