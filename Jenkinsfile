@@ -2,34 +2,16 @@ pipeline {
     agent any
 
     environment {
-        CLUSTER_NAME = "ma-cluster"
-        AWS_REGION = "ap-south-1"
-        ECR_REPO = "503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app"
-        DOCKERHUB_REPO = "shaikmafidbasha/myapp"
-        IMAGE_TAG = "latest"
+        AWS_REGION = 'ap-south-1'
+        ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app'
+        CLUSTER_NAME = 'ma-eks-cluster'   // replace with your actual EKS cluster name
+        KUBE_NAMESPACE = 'default'        // replace if needed
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/mafid456/jenkins1.git'
-            }
-        }
-
-        stage('Create EKS Cluster') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
-                    sh '''
-                    echo "Creating Kubernetes cluster on AWS..."
-                    eksctl create cluster \
-                      --name $ma-cluster \
-                      --region ap-south-1 \
-                      --nodes 2 \
-                      --node-type t3.medium \
-                      --managed
-                    '''
-                }
             }
         }
 
@@ -37,7 +19,8 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
                     sh '''
-                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app
+                        aws ecr get-login-password --region $AWS_REGION | \
+                        docker login --username AWS --password-stdin $ECR_REPO
                     '''
                 }
             }
@@ -45,55 +28,42 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                docker build -t $ECR_REPO:$IMAGE_TAG .
-                '''
+                sh 'docker build -t siva/app:latest .'
             }
         }
 
         stage('Push Image to ECR') {
             steps {
-                sh '''
-                docker push $ECR_REPO:$IMAGE_TAG
-                '''
+                sh 'docker tag siva/app:latest $ECR_REPO:latest'
+                sh 'docker push $ECR_REPO:latest'
             }
         }
 
-        stage('Login to Docker Hub') {
+        stage('Configure kubectl for EKS') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'shaikmafidbasha', passwordVariable: 'c9a39a2b-6afc-4762-b2a4-fd3cf481115b')]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
                     sh '''
-                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        aws eks update-kubeconfig --name ma-eks-cluster --region ap-south-1
+                        kubectl get nodes
                     '''
                 }
             }
         }
 
-        stage('Push Image to Docker Hub') {
+        stage('Deploy to EKS') {
             steps {
                 sh '''
-                docker tag $ECR_REPO:$IMAGE_TAG $DOCKERHUB_REPO:$IMAGE_TAG
-                docker push $DOCKERHUB_REPO:$IMAGE_TAG
-                '''
-            }
-        }
-
-        stage('Deploy to Cluster') {
-            steps {
-                sh '''
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
+                    # Update your Kubernetes deployment with the new image
+                    kubectl set image deployment/my-app-deployment my-app-container=$ECR_REPO:latest -n $KUBE_NAMESPACE
+                    kubectl rollout status deployment/my-app-deployment -n $KUBE_NAMESPACE
                 '''
             }
         }
     }
 
     post {
-        success {
-            echo "✅ Cluster created, image built & pushed, and app deployed successfully!"
-        }
-        failure {
-            echo "❌ Pipeline failed. Check logs."
-        }
+        failure { echo '❌ Pipeline failed. Check logs.' }
+        success { echo '✅ Docker image pushed to ECR and deployed to EKS successfully!' }
     }
 }
+
