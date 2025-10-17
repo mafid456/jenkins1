@@ -131,3 +131,4 @@ EOF
         failure { echo '❌ Pipeline failed. Check logs.' }
         success { echo '✅ Docker image deployed to EKS successfully!' }
     }
+}
