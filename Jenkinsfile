@@ -44,18 +44,6 @@ pipeline {
             }
         }
 
-        stage('Check eksctl and kubectl') {
-            steps {
-                sh '''
-                    echo "Checking eksctl and kubectl availability..."
-                    command -v eksctl >/dev/null 2>&1 || { echo "eksctl is not installed!"; exit 1; }
-                    command -v kubectl >/dev/null 2>&1 || { echo "kubectl is not installed!"; exit 1; }
-                    eksctl version
-                    kubectl version --client
-                '''
-            }
-        }
-
         stage('Create EKS Cluster') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
