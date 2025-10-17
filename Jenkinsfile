@@ -22,10 +22,10 @@ pipeline {
         stage('Login to AWS ECR') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
+                    sh """
 aws ecr get-login-password --region $AWS_REGION | \
 docker login --username AWS --password-stdin $ECR_REPO
-'''
+"""
                 }
             }
         }
@@ -48,7 +48,7 @@ docker push $ECR_REPO:$IMAGE_TAG
         stage('Create EKS Cluster if Needed') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
+                    sh """
 echo "Checking if EKS cluster $CLUSTER_NAME exists..."
 if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
     echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
@@ -61,7 +61,7 @@ else
         --node-type t3.medium \
         --managed
 fi
-'''
+"""
                 }
             }
         }
@@ -69,23 +69,24 @@ fi
         stage('Configure kubectl') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
+                    sh """
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 kubectl get nodes
-'''
+"""
                 }
             }
         }
 
         stage('Deploy Flask App') {
             steps {
-                sh '''
-cat <<EOF | kubectl apply -f -
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
+                    sh """
+kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: $DEPLOYMENT_NAME
-  namespace: $KUBE_NAMESPACE
+  name: ${DEPLOYMENT_NAME}
+  namespace: ${KUBE_NAMESPACE}
 spec:
   replicas: 1
   selector:
@@ -98,15 +99,15 @@ spec:
     spec:
       containers:
       - name: flask-app-container
-        image: $ECR_REPO:$IMAGE_TAG
+        image: ${ECR_REPO}:${IMAGE_TAG}
         ports:
         - containerPort: 5000
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: $SERVICE_NAME
-  namespace: $KUBE_NAMESPACE
+  name: ${SERVICE_NAME}
+  namespace: ${KUBE_NAMESPACE}
 spec:
   type: LoadBalancer
   selector:
@@ -116,23 +117,26 @@ spec:
       port: 80
       targetPort: 5000
 EOF
-'''
+"""
+                }
             }
         }
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                sh '''
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
+                    sh """
 echo "App will be deleted automatically after 2 hours..."
 nohup bash -c '
 sleep 7200
 echo "Deleting Flask app deployment and service..."
-kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
-kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
-echo "Deleting EKS cluster $CLUSTER_NAME..."
-eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+kubectl delete deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE}
+kubectl delete service ${SERVICE_NAME} -n ${KUBE_NAMESPACE}
+echo "Deleting EKS cluster ${CLUSTER_NAME}..."
+eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
 ' >/dev/null 2>&1 &
-'''
+"""
+                }
             }
         }
     }
