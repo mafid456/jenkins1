@@ -23,8 +23,7 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
-aws ecr get-login-password --region $AWS_REGION | \
-docker login --username AWS --password-stdin $ECR_REPO
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
 '''
                 }
             }
@@ -33,7 +32,6 @@ docker login --username AWS --password-stdin $ECR_REPO
         stage('Build Docker Image') {
             steps {
                 sh '''
-# Ensure your Flask app already runs on 0.0.0.0 in app.py
 docker build -t basha/app:$IMAGE_TAG .
 '''
             }
@@ -83,4 +81,53 @@ kubectl get nodes
         stage('Deploy Flask App') {
             steps {
                 sh '''
-# Delete previous deploym
+# Delete previous deployment & service if exists
+kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
+kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
+
+# Deploy new deployment & service
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOYMENT_NAME}
+  namespace: ${KUBE_NAMESPACE}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+    spec:
+      containers:
+      - name: flask-app-container
+        image: ${ECR_REPO}:${IMAGE_TAG}
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${KUBE_NAMESPACE}
+spec:
+  type: LoadBalancer
+  selector:
+    app: flask-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+EOF
+'''
+            }
+        }
+    }
+
+    post {
+        failure { echo '❌ Pipeline failed. Check logs.' }
+        success { echo '✅ Docker image deployed to EKS successfully!' }
+    }
