@@ -77,10 +77,24 @@ kubectl get nodes
             }
         }
 
-        stage('Deploy Flask App') {
+        stage('Create ECR Pull Secret') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
+kubectl create secret docker-registry ecr-pull-secret \
+  --docker-server=$AWS_REGION.dkr.ecr.ap-south-1.amazonaws.com \
+  --docker-username=AWS \
+  --docker-password=\$(aws ecr get-login-password --region $AWS_REGION) \
+  --docker-email=example@example.com \
+  --namespace $KUBE_NAMESPACE || echo "Secret already exists"
+"""
+                }
+            }
+        }
+
+        stage('Deploy Flask App') {
+            steps {
+                sh """
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -88,7 +102,7 @@ metadata:
   name: ${DEPLOYMENT_NAME}
   namespace: ${KUBE_NAMESPACE}
 spec:
-  replicas: 2  # Deploy 2 replicas
+  replicas: 2
   selector:
     matchLabels:
       app: flask-app
@@ -97,6 +111,8 @@ spec:
       labels:
         app: flask-app
     spec:
+      imagePullSecrets:
+      - name: ecr-pull-secret
       containers:
       - name: flask-app-container
         image: ${ECR_REPO}:${IMAGE_TAG}
@@ -118,14 +134,12 @@ spec:
       targetPort: 5000
 EOF
 """
-                }
             }
         }
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
+                sh """
 echo "App will be deleted automatically after 2 hours..."
 nohup bash -c '
 sleep 7200
@@ -136,7 +150,6 @@ echo "Deleting EKS cluster ${CLUSTER_NAME}..."
 eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
 ' >/dev/null 2>&1 &
 """
-                }
             }
         }
     }
