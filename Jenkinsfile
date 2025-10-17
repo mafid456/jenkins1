@@ -70,7 +70,7 @@ fi
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
-aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION --alias $CLUSTER_NAME
 kubectl get nodes
 """
                 }
@@ -124,8 +124,7 @@ EOF
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
+                sh """
 echo "App will be deleted automatically after 2 hours..."
 nohup bash -c '
 sleep 7200
@@ -136,7 +135,6 @@ echo "Deleting EKS cluster ${CLUSTER_NAME}..."
 eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
 ' >/dev/null 2>&1 &
 """
-                }
             }
         }
     }
