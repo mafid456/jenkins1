@@ -140,25 +140,10 @@ EOF
 '''
             }
         }
-
-        stage('Schedule Auto Deletion of App Only (2 hours)') {
-            steps {
-                sh '''
-echo "Flask app will be deleted automatically after 2 hours..."
-nohup bash -c '
-sleep 7200
-echo "Deleting Flask app deployment and service..."
-kubectl delete deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE}
-kubectl delete service ${SERVICE_NAME} -n ${KUBE_NAMESPACE}
-echo "✅ Flask app removed. EKS cluster remains intact."
-' >/dev/null 2>&1 &
-'''
-            }
-        }
     }
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS. Previous pods deleted. Flask app scheduled for auto-deletion (EKS cluster retained)!' }
+        success { echo '✅ Docker image deployed to EKS. Previous pods deleted. Deployment is stable!' }
     }
 }
