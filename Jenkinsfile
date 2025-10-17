@@ -145,14 +145,15 @@ echo "Flask app is available at http://$EXTERNAL_IP/"
         stage('Schedule Auto Deletion') {
             steps {
                 sh """
-echo "App will be deleted automatically in $AUTO_DELETE_SECONDS seconds..."
+echo "App and cluster will be deleted automatically in $AUTO_DELETE_SECONDS seconds..."
 nohup bash -c '
 sleep $AUTO_DELETE_SECONDS
 echo "Deleting Flask app deployment and service..."
 kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
 kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
 echo "Deleting EKS cluster $CLUSTER_NAME..."
-eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION --wait
+echo "✅ Auto-deletion completed."
 ' >/dev/null 2>&1 &
 """
             }
