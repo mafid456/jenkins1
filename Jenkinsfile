@@ -86,6 +86,16 @@ kubectl get nodes
             }
         }
 
+        stage('Delete Previous Deployment & Service') {
+            steps {
+                sh '''
+echo "Deleting any previous deployment and service..."
+kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
+kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
+'''
+            }
+        }
+
         stage('Deploy Flask App') {
             steps {
                 sh '''
@@ -149,6 +159,6 @@ echo "✅ Flask app removed. EKS cluster remains intact."
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS and Flask app scheduled for auto-deletion (EKS cluster retained)!' }
+        success { echo '✅ Docker image deployed to EKS. Previous pods deleted. Flask app scheduled for auto-deletion (EKS cluster retained)!' }
     }
 }
