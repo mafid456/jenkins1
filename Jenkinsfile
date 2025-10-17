@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        PATH = "/usr/local/bin:/usr/bin:/bin"
+        PATH = "/usr/local/bin:/usr/bin:/bin"  // ensure eksctl & kubectl are in PATH
         AWS_REGION = 'ap-south-1'
         ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/basha/app'
         CLUSTER_NAME = 'ma-eks-cluster'
@@ -44,19 +44,11 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
-                        # Detect eksctl path
-                        EXSCTL_PATH=$(command -v eksctl)
-                        if [ -z "$EXSCTL_PATH" ]; then
-                            echo "❌ eksctl not found. Please install eksctl on Jenkins server."
-                            exit 1
-                        fi
-
-                        echo "Checking if EKS cluster $CLUSTER_NAME exists..."
-                        if $EXSCTL_PATH get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
+                        if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
                             echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
                         else
                             echo "⏳ Cluster not found. Creating new one..."
-                            $EXSCTL_PATH create cluster \
+                            eksctl create cluster \
                                 --name ma-eks-cluster \
                                 --region ap-south-1 \
                                 --nodes 2 \
@@ -124,17 +116,17 @@ pipeline {
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                sh '''
-                    EXSCTL_PATH=$(command -v eksctl)
+                sh """
+                    echo "App will be deleted automatically after 2 hours..."
                     nohup bash -c '
                         sleep 7200
                         echo "Deleting Flask app deployment and service..."
                         kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
                         kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
                         echo "Deleting EKS cluster $CLUSTER_NAME..."
-                        $EXSCTL_PATH delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+                        eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
                     ' >/dev/null 2>&1 &
-                '''
+                """
             }
         }
     }
