@@ -30,15 +30,10 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh "docker build -t basha/app:$IMAGE_TAG ."
-            }
-        }
-
-        stage('Push Image to ECR') {
+        stage('Build & Push Docker Image') {
             steps {
                 sh """
+                    docker build -t basha/app:$IMAGE_TAG .
                     docker tag basha/app:$IMAGE_TAG $ECR_REPO:$IMAGE_TAG
                     docker push $ECR_REPO:$IMAGE_TAG
                 """
@@ -49,12 +44,19 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
+                        # Detect eksctl path
+                        EXSCTL_PATH=$(command -v eksctl)
+                        if [ -z "$EXSCTL_PATH" ]; then
+                            echo "❌ eksctl not found. Please install eksctl on Jenkins server."
+                            exit 1
+                        fi
+
                         echo "Checking if EKS cluster $CLUSTER_NAME exists..."
-                        if /usr/local/bin/eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
+                        if $EXSCTL_PATH get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
                             echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
                         else
                             echo "⏳ Cluster not found. Creating new one..."
-                            /usr/local/bin/eksctl create cluster \
+                            $EXSCTL_PATH create cluster \
                                 --name ma-eks-cluster \
                                 --region ap-south-1 \
                                 --nodes 2 \
@@ -122,17 +124,17 @@ pipeline {
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                sh """
-                    echo "App will be deleted automatically after 2 hours..."
+                sh '''
+                    EXSCTL_PATH=$(command -v eksctl)
                     nohup bash -c '
                         sleep 7200
                         echo "Deleting Flask app deployment and service..."
                         kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
                         kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
                         echo "Deleting EKS cluster $CLUSTER_NAME..."
-                        /usr/local/bin/eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+                        $EXSCTL_PATH delete cluster --name $CLUSTER_NAME --region $AWS_REGION
                     ' >/dev/null 2>&1 &
-                """
+                '''
             }
         }
     }
