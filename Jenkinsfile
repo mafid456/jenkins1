@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION = 'ap-south-1'
-        ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/basha/app'
+        ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app'
         CLUSTER_NAME = 'ma-eks-cluster'
         KUBE_NAMESPACE = 'default'
     }
@@ -17,7 +17,7 @@ pipeline {
 
         stage('Login to AWS ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
                         aws ecr get-login-password --region $AWS_REGION | \
                         docker login --username AWS --password-stdin $ECR_REPO
@@ -26,24 +26,40 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t basha/app:latest .'
-            }
-        }
-
-        stage('Push Image to ECR') {
+        stage('Build and Push Docker Image') {
             steps {
                 sh '''
-                    docker tag basha/app:latest $ECR_REPO:latest
+                    docker build -t siva/app:latest .
+                    docker tag siva/app:latest $ECR_REPO:latest
                     docker push $ECR_REPO:latest
                 '''
             }
         }
 
+        stage('Ensure EKS Cluster Exists') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
+                    sh '''
+                        echo "Checking if EKS cluster $CLUSTER_NAME exists..."
+                        if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
+                            echo "✅ Cluster $CLUSTER_NAME already exists."
+                        else
+                            echo "⏳ Cluster not found. Creating new one..."
+                            eksctl create cluster \
+                                --name ma-eks-cluster \
+                                --region ap-south-1 \
+                                --nodes 2 \
+                                --node-type t3.medium \
+                                --managed
+                        fi
+                    '''
+                }
+            }
+        }
+
         stage('Configure kubectl for EKS') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
                     sh '''
                         aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl get nodes
@@ -55,16 +71,18 @@ pipeline {
         stage('Deploy Application to EKS') {
             steps {
                 sh '''
-                    echo "Creating deployment.yml..."
+                    echo "Deploying application to EKS..."
+
+                    # Write deployment and service files dynamically
                     cat <<EOF > deployment.yml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flask-app-deployment
+  name: flask-app
   labels:
     app: flask-app
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: flask-app
@@ -80,12 +98,11 @@ spec:
         - containerPort: 5000
 EOF
 
-                    echo "Creating service.yml..."
                     cat <<EOF > service.yml
 apiVersion: v1
 kind: Service
 metadata:
-  name: flask-app-service
+  name: flask-service
 spec:
   selector:
     app: flask-app
@@ -96,39 +113,30 @@ spec:
   type: LoadBalancer
 EOF
 
-                    echo "Applying Kubernetes manifests..."
                     kubectl apply -f deployment.yml
                     kubectl apply -f service.yml
 
-                    echo "Waiting for LoadBalancer to be ready..."
-                    sleep 60
-                    kubectl get svc flask-app-service
+                    echo "✅ Flask application deployed successfully!"
                 '''
             }
         }
 
-        stage('Wait and Delete Application') {
+        stage('Schedule Auto-Delete After 2 Hours') {
             steps {
-                script {
-                    echo "✅ Flask application deployed successfully."
-                    echo "🕒 It will be automatically deleted after 2 hours..."
-                    sleep(time: 2, unit: 'HOURS')  // <--- Changed from 1 to 2 hours
-                    sh '''
-                        echo "Deleting the deployment and service..."
-                        kubectl delete -f deployment.yml || true
-                        kubectl delete -f service.yml || true
-                    '''
-                }
+                sh '''
+                    echo "Scheduling automatic cleanup after 2 hours..."
+                    (sleep 7200 && kubectl delete -f deployment.yml && kubectl delete -f service.yml && echo "🧹 Deployment and service deleted automatically after 2 hours.") &
+                '''
             }
         }
     }
 
     post {
         failure {
-            echo '❌ Pipeline failed. Check logs for details.'
+            echo '❌ Pipeline failed. Check logs.'
         }
         success {
-            echo '✅ Flask app deployed, exposed, and scheduled for auto-deletion after 2 hours.'
+            echo '✅ Application deployed successfully and will auto-delete after 2 hours.'
         }
     }
 }
