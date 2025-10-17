@@ -22,37 +22,36 @@ pipeline {
         stage('Login to AWS ECR') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
+                    sh '''
 aws ecr get-login-password --region $AWS_REGION | \
 docker login --username AWS --password-stdin $ECR_REPO
-"""
+'''
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh """
-# Ensure Flask app runs on 0.0.0.0 inside Docker
-sed -i '/app.run/c\if __name__ == "__main__":\\n    app.run(host="0.0.0.0", port=5000)' app.py
+                sh '''
+# Ensure your Flask app already runs on 0.0.0.0 in app.py
 docker build -t basha/app:$IMAGE_TAG .
-"""
+'''
             }
         }
 
         stage('Push Image to ECR') {
             steps {
-                sh """
+                sh '''
 docker tag basha/app:$IMAGE_TAG $ECR_REPO:$IMAGE_TAG
 docker push $ECR_REPO:$IMAGE_TAG
-"""
+'''
             }
         }
 
         stage('Create EKS Cluster if Needed') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
+                    sh '''
 echo "Checking if EKS cluster $CLUSTER_NAME exists..."
 if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
     echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
@@ -65,7 +64,7 @@ else
         --node-type t3.medium \
         --managed
 fi
-"""
+'''
                 }
             }
         }
@@ -73,65 +72,15 @@ fi
         stage('Configure kubectl') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
+                    sh '''
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 kubectl get nodes
-"""
+'''
                 }
             }
         }
 
         stage('Deploy Flask App') {
             steps {
-                sh """
-# Delete previous deployment & service if exists
-kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
-kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
-
-# Deploy new deployment & service
-kubectl apply -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${DEPLOYMENT_NAME}
-  namespace: ${KUBE_NAMESPACE}
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: flask-app
-  template:
-    metadata:
-      labels:
-        app: flask-app
-    spec:
-      containers:
-      - name: flask-app-container
-        image: ${ECR_REPO}:${IMAGE_TAG}
-        ports:
-        - containerPort: 5000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${SERVICE_NAME}
-  namespace: ${KUBE_NAMESPACE}
-spec:
-  type: LoadBalancer
-  selector:
-    app: flask-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 5000
-EOF
-"""
-            }
-        }
-    }
-
-    post {
-        failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS successfully! Access the app using the LoadBalancer DNS.' }
-    }
-}
+                sh '''
+# Delete previous deploym
