@@ -6,9 +6,11 @@ pipeline {
         ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/basha/app'
         CLUSTER_NAME = 'ma-eks-cluster'
         KUBE_NAMESPACE = 'default'
+        PATH = "/usr/local/bin:/usr/bin:/bin"   // ensures eksctl and kubectl work
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/mafid456/jenkins1.git'
@@ -26,7 +28,7 @@ pipeline {
             }
         }
 
-        stage('Build and Push Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
                 sh '''
                     docker build -t basha/app:latest .
@@ -36,7 +38,7 @@ pipeline {
             }
         }
 
-        stage('Ensure EKS Cluster Exists') {
+        stage('Create EKS Cluster if Not Exists') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
@@ -45,12 +47,7 @@ pipeline {
                             echo "✅ Cluster $CLUSTER_NAME already exists."
                         else
                             echo "⏳ Cluster not found. Creating new one..."
-                            eksctl create cluster \
-                                --name ma-eks-cluster \
-                                --region ap-south-1 \
-                                --nodes 2 \
-                                --node-type t3.medium \
-                                --managed
+                            eksctl create cluster --name $CLUSTER_NAME --region $AWS_REGION --nodes 2 --node-type t3.medium --managed
                         fi
                     '''
                 }
@@ -59,7 +56,7 @@ pipeline {
 
         stage('Configure kubectl for EKS') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
                         aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl get nodes
@@ -71,16 +68,14 @@ pipeline {
         stage('Deploy Application to EKS') {
             steps {
                 sh '''
-                    echo "Deploying application to EKS..."
+                    echo "Creating deployment.yml and service.yml..."
 
-                    # Write deployment and service files dynamically
                     cat <<EOF > deployment.yml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: flask-app
-  labels:
-    app: flask-app
+  namespace: $KUBE_NAMESPACE
 spec:
   replicas: 1
   selector:
@@ -92,7 +87,7 @@ spec:
         app: flask-app
     spec:
       containers:
-      - name: flask-container
+      - name: flask-app
         image: $ECR_REPO:latest
         ports:
         - containerPort: 5000
@@ -103,40 +98,43 @@ apiVersion: v1
 kind: Service
 metadata:
   name: flask-service
+  namespace: $KUBE_NAMESPACE
 spec:
+  type: LoadBalancer
   selector:
     app: flask-app
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 5000
-  type: LoadBalancer
+  - port: 80
+    targetPort: 5000
 EOF
 
+                    echo "Deploying to EKS..."
                     kubectl apply -f deployment.yml
                     kubectl apply -f service.yml
 
-                    echo "✅ Flask application deployed successfully!"
+                    echo "Waiting for the service to get external IP..."
+                    sleep 60
+                    kubectl get svc flask-service -n $KUBE_NAMESPACE
                 '''
             }
         }
 
-        stage('Schedule Auto-Delete After 2 Hours') {
+        stage('Schedule Auto Delete (2 Hours)') {
             steps {
                 sh '''
-                    echo "Scheduling automatic cleanup after 2 hours..."
-                    (sleep 7200 && kubectl delete -f deployment.yml && kubectl delete -f service.yml && echo "🧹 Deployment and service deleted automatically after 2 hours.") &
+                    echo "Scheduling cluster deletion after 2 hours..."
+                    nohup bash -c "sleep 7200 && eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION" &
                 '''
             }
         }
     }
 
     post {
-        failure {
-            echo '❌ Pipeline failed. Check logs.'
-        }
         success {
-            echo '✅ Application deployed successfully and will auto-delete after 2 hours.'
+            echo '✅ Deployment complete! Cluster will auto-delete after 2 hours.'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check logs for errors.'
         }
     }
 }
