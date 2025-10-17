@@ -70,7 +70,7 @@ fi
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
-aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION --alias $CLUSTER_NAME
+aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 kubectl get nodes
 """
                 }
@@ -88,7 +88,7 @@ metadata:
   name: ${DEPLOYMENT_NAME}
   namespace: ${KUBE_NAMESPACE}
 spec:
-  replicas: 1
+  replicas: 2  # Deploy 2 replicas
   selector:
     matchLabels:
       app: flask-app
@@ -124,7 +124,8 @@ EOF
 
         stage('Schedule Auto Deletion (2 hours)') {
             steps {
-                sh """
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
+                    sh """
 echo "App will be deleted automatically after 2 hours..."
 nohup bash -c '
 sleep 7200
@@ -135,12 +136,13 @@ echo "Deleting EKS cluster ${CLUSTER_NAME}..."
 eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
 ' >/dev/null 2>&1 &
 """
+                }
             }
         }
     }
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS and scheduled for auto-deletion in 2 hours!' }
+        success { echo '✅ Docker image deployed to EKS with 2 replicas and scheduled for auto-deletion in 2 hours!' }
     }
 }
