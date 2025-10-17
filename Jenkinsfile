@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION = 'ap-south-1'
-        ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/siva/app'
+        ECR_REPO = '503427798981.dkr.ecr.ap-south-1.amazonaws.com/basha/app'
         CLUSTER_NAME = 'ma-eks-cluster'
         KUBE_NAMESPACE = 'default'
     }
@@ -29,8 +29,8 @@ pipeline {
         stage('Build and Push Docker Image') {
             steps {
                 sh '''
-                    docker build -t siva/app:latest .
-                    docker tag siva/app:latest $ECR_REPO:latest
+                    docker build -t basha/app:latest .
+                    docker tag basha/app:latest $ECR_REPO:latest
                     docker push $ECR_REPO:latest
                 '''
             }
