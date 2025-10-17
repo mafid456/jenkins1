@@ -10,6 +10,7 @@ pipeline {
         DEPLOYMENT_NAME = 'flask-app-deployment'
         SERVICE_NAME = 'flask-app-service'
         IMAGE_TAG = 'latest'
+        AUTO_DELETE_SECONDS = 7200   // 2 hours
     }
 
     stages {
@@ -23,7 +24,8 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+aws ecr get-login-password --region $AWS_REGION | \
+docker login --username AWS --password-stdin $ECR_REPO
 '''
                 }
             }
@@ -31,30 +33,26 @@ aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-docker build -t basha/app:$IMAGE_TAG .
-'''
+                sh "docker build -t basha/app:$IMAGE_TAG ."
             }
         }
 
         stage('Push Image to ECR') {
             steps {
-                sh '''
+                sh """
 docker tag basha/app:$IMAGE_TAG $ECR_REPO:$IMAGE_TAG
 docker push $ECR_REPO:$IMAGE_TAG
-'''
+"""
             }
         }
 
         stage('Create EKS Cluster if Needed') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
-echo "Checking if EKS cluster $CLUSTER_NAME exists..."
+                    sh """
 if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
-    echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
+    echo "✅ Cluster $CLUSTER_NAME already exists."
 else
-    echo "⏳ Cluster not found. Creating new one..."
     eksctl create cluster \
         --name ma-eks-cluster \
         --region ap-south-1 \
@@ -62,7 +60,7 @@ else
         --node-type t3.medium \
         --managed
 fi
-'''
+"""
                 }
             }
         }
@@ -78,14 +76,18 @@ kubectl get nodes
             }
         }
 
-        stage('Deploy Flask App') {
+        stage('Delete Previous Deployment') {
             steps {
-                sh '''
-# Delete previous deployment & service if exists
+                sh """
 kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
 kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
+"""
+            }
+        }
 
-# Deploy new deployment & service
+        stage('Deploy Flask App') {
+            steps {
+                sh """
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -122,13 +124,43 @@ spec:
       port: 80
       targetPort: 5000
 EOF
+"""
+            }
+        }
+
+        stage('Wait for LoadBalancer') {
+            steps {
+                sh '''
+echo "Waiting for LoadBalancer EXTERNAL-IP..."
+EXTERNAL_IP=""
+while [ -z "$EXTERNAL_IP" ]; do
+  EXTERNAL_IP=$(kubectl get svc $SERVICE_NAME -n $KUBE_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+  [ -z "$EXTERNAL_IP" ] && sleep 5
+done
+echo "Flask app is available at http://$EXTERNAL_IP/"
 '''
+            }
+        }
+
+        stage('Schedule Auto Deletion') {
+            steps {
+                sh """
+echo "App will be deleted automatically in $AUTO_DELETE_SECONDS seconds..."
+nohup bash -c '
+sleep $AUTO_DELETE_SECONDS
+echo "Deleting Flask app deployment and service..."
+kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
+kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
+echo "Deleting EKS cluster $CLUSTER_NAME..."
+eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
+' >/dev/null 2>&1 &
+"""
             }
         }
     }
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS successfully!' }
+        success { echo '✅ Flask app deployed and scheduled for automatic deletion!' }
     }
 }
