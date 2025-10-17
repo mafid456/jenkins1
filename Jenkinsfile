@@ -17,7 +17,7 @@ pipeline {
 
         stage('Login to AWS ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
                         aws ecr get-login-password --region $AWS_REGION | \
                         docker login --username AWS --password-stdin $ECR_REPO
@@ -43,7 +43,7 @@ pipeline {
 
         stage('Configure kubectl for EKS') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '566c9043-c535-4eb2-b23f-f2301eb08962']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh '''
                         aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl get nodes
