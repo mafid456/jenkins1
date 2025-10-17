@@ -10,7 +10,6 @@ pipeline {
         DEPLOYMENT_NAME = 'flask-app-deployment'
         SERVICE_NAME = 'flask-app-service'
         IMAGE_TAG = 'latest'
-        IMAGE_PULL_SECRET = 'ecr-secret'
     }
 
     stages {
@@ -20,28 +19,24 @@ pipeline {
             }
         }
 
-        stage('Login to AWS ECR & Create Pull Secret') {
+        stage('Login to AWS ECR') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
-# Login to ECR
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-
-# Create Kubernetes secret for pulling images
-kubectl delete secret $IMAGE_PULL_SECRET --ignore-not-found
-kubectl create secret docker-registry $IMAGE_PULL_SECRET \
-  --docker-server=$ECR_REPO \
-  --docker-username=AWS \
-  --docker-password=$(aws ecr get-login-password --region $AWS_REGION) \
-  --namespace $KUBE_NAMESPACE
-'''
+                    sh """
+aws ecr get-login-password --region $AWS_REGION | \
+docker login --username AWS --password-stdin $ECR_REPO
+"""
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t basha/app:$IMAGE_TAG ."
+                sh """
+# Ensure Flask app runs on 0.0.0.0 inside Docker
+sed -i '/app.run/c\if __name__ == "__main__":\\n    app.run(host="0.0.0.0", port=5000)' app.py
+docker build -t basha/app:$IMAGE_TAG .
+"""
             }
         }
 
@@ -57,7 +52,7 @@ docker push $ECR_REPO:$IMAGE_TAG
         stage('Create EKS Cluster if Needed') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
+                    sh """
 echo "Checking if EKS cluster $CLUSTER_NAME exists..."
 if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
     echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
@@ -70,7 +65,7 @@ else
         --node-type t3.medium \
         --managed
 fi
-'''
+"""
                 }
             }
         }
@@ -78,27 +73,22 @@ fi
         stage('Configure kubectl') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh '''
+                    sh """
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 kubectl get nodes
-'''
+"""
                 }
-            }
-        }
-
-        stage('Delete Previous Deployment & Service') {
-            steps {
-                sh '''
-echo "Deleting any previous deployment and service..."
-kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
-kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
-'''
             }
         }
 
         stage('Deploy Flask App') {
             steps {
-                sh '''
+                sh """
+# Delete previous deployment & service if exists
+kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
+kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
+
+# Deploy new deployment & service
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -120,8 +110,6 @@ spec:
         image: ${ECR_REPO}:${IMAGE_TAG}
         ports:
         - containerPort: 5000
-      imagePullSecrets:
-      - name: ${IMAGE_PULL_SECRET}
 ---
 apiVersion: v1
 kind: Service
@@ -137,13 +125,13 @@ spec:
       port: 80
       targetPort: 5000
 EOF
-'''
+"""
             }
         }
     }
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Docker image deployed to EKS. Previous pods deleted. Deployment is stable!' }
+        success { echo '✅ Docker image deployed to EKS successfully! Access the app using the LoadBalancer DNS.' }
     }
 }
