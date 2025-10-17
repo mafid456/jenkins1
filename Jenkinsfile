@@ -10,7 +10,7 @@ pipeline {
         DEPLOYMENT_NAME = 'flask-app-deployment'
         SERVICE_NAME = 'flask-app-service'
         IMAGE_TAG = 'latest'
-        AUTO_DELETE_SECONDS = 7200   // 2 hours
+        AUTO_DELETE_SECONDS = 60   // Set here the number of seconds before deletion (e.g., 60 = 1 minute)
     }
 
     stages {
@@ -135,7 +135,7 @@ echo "Waiting for LoadBalancer EXTERNAL-IP..."
 EXTERNAL_IP=""
 while [ -z "$EXTERNAL_IP" ]; do
   EXTERNAL_IP=$(kubectl get svc $SERVICE_NAME -n $KUBE_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-  [ -z "$EXTERNAL_IP" ] && sleep 5
+  [ -z "$EXTERNAL_IP" ] && sleep 2
 done
 echo "Flask app is available at http://$EXTERNAL_IP/"
 '''
@@ -149,8 +149,8 @@ echo "App and cluster will be deleted automatically in $AUTO_DELETE_SECONDS seco
 nohup bash -c '
 sleep $AUTO_DELETE_SECONDS
 echo "Deleting Flask app deployment and service..."
-kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE
-kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE
+kubectl delete deployment $DEPLOYMENT_NAME -n $KUBE_NAMESPACE --ignore-not-found
+kubectl delete service $SERVICE_NAME -n $KUBE_NAMESPACE --ignore-not-found
 echo "Deleting EKS cluster $CLUSTER_NAME..."
 eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION --wait
 echo "✅ Auto-deletion completed."
@@ -162,6 +162,6 @@ echo "✅ Auto-deletion completed."
 
     post {
         failure { echo '❌ Pipeline failed. Check logs.' }
-        success { echo '✅ Flask app deployed and scheduled for automatic deletion!' }
+        success { echo "✅ Flask app deployed and will auto-delete in $AUTO_DELETE_SECONDS seconds!" }
     }
 }
