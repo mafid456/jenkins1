@@ -23,8 +23,8 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
-aws ecr get-login-password --region $AWS_REGION | \
-docker login --username AWS --password-stdin $ECR_REPO
+aws ecr get-login-password --region ${AWS_REGION} | \
+docker login --username AWS --password-stdin ${ECR_REPO}
 """
                 }
             }
@@ -32,15 +32,15 @@ docker login --username AWS --password-stdin $ECR_REPO
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t basha/app:$IMAGE_TAG ."
+                sh "docker build -t basha/app:${IMAGE_TAG} ."
             }
         }
 
         stage('Push Image to ECR') {
             steps {
                 sh """
-docker tag basha/app:$IMAGE_TAG $ECR_REPO:$IMAGE_TAG
-docker push $ECR_REPO:$IMAGE_TAG
+docker tag basha/app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+docker push ${ECR_REPO}:${IMAGE_TAG}
 """
             }
         }
@@ -49,9 +49,9 @@ docker push $ECR_REPO:$IMAGE_TAG
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
-echo "Checking if EKS cluster $CLUSTER_NAME exists..."
-if eksctl get cluster --name $CLUSTER_NAME --region $AWS_REGION >/dev/null 2>&1; then
-    echo "✅ Cluster $CLUSTER_NAME already exists. Skipping creation."
+echo "Checking if EKS cluster ${CLUSTER_NAME} exists..."
+if eksctl get cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} >/dev/null 2>&1; then
+    echo "✅ Cluster ${CLUSTER_NAME} already exists. Skipping creation."
 else
     echo "⏳ Cluster not found. Creating new one..."
     eksctl create cluster \
@@ -70,23 +70,8 @@ fi
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
                     sh """
-aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_REGION}
 kubectl get nodes
-"""
-                }
-            }
-        }
-
-        stage('Create ECR Pull Secret') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '25503878-b6ba-410e-9bf4-cba116399ff5']]) {
-                    sh """
-kubectl create secret docker-registry ecr-pull-secret \
-  --docker-server=$AWS_REGION.dkr.ecr.ap-south-1.amazonaws.com \
-  --docker-username=AWS \
-  --docker-password=\$(aws ecr get-login-password --region $AWS_REGION) \
-  --docker-email=example@example.com \
-  --namespace $KUBE_NAMESPACE || echo "Secret already exists"
 """
                 }
             }
@@ -111,8 +96,6 @@ spec:
       labels:
         app: flask-app
     spec:
-      imagePullSecrets:
-      - name: ecr-pull-secret
       containers:
       - name: flask-app-container
         image: ${ECR_REPO}:${IMAGE_TAG}
@@ -159,3 +142,4 @@ eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
         success { echo '✅ Docker image deployed to EKS with 2 replicas and scheduled for auto-deletion in 2 hours!' }
     }
 }
+
